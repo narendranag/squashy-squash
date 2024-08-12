@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Squashy Squash v1.00 by Neel </title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            touch-action: none;
+        }
+        #gameCanvas {
+            border: 2px solid #000;
+            background-color: #1a472a;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const levels = [
+            { speed: 1, paddleWidth: 100, ballRadius: 8, color: '#ffffff', backgroundColor: '#1a472a' },
+            { speed: 1.2, paddleWidth: 90, ballRadius: 7, color: '#ffff00', backgroundColor: '#123456' },
+            { speed: 1.4, paddleWidth: 80, ballRadius: 6, color: '#ff00ff', backgroundColor: '#654321' },
+            { speed: 1.6, paddleWidth: 70, ballRadius: 5, color: '#00ffff', backgroundColor: '#432100' },
+            { speed: 1.8, paddleWidth: 60, ballRadius: 4, color: '#ff0000', backgroundColor: '#000000' }
+        ];
+
+        let currentLevel = 0;
+
+        // Game objects
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: levels[currentLevel].ballRadius,
+            dx: 4,
+            dy: -4,
+            speed: levels[currentLevel].speed,
+            color: levels[currentLevel].color
+        };
+
+        const paddle = {
+            width: levels[currentLevel].paddleWidth,
+            height: 10,
+            x: canvas.width / 2 - levels[currentLevel].paddleWidth / 2,
+            y: canvas.height - 20,
+            color: '#ff6b6b'
+        };
+
+        const net = {
+            x: 0,
+            y: canvas.height / 2,
+            width: canvas.width,
+            height: 2,
+            color: '#ffffff'
+        };
+
+        // Power-ups
+        const powerUps = {
+            types: ['speed', 'wall'],
+            active: null,
+            duration: 5000, // 5 seconds
+            startTime: 0,
+            speed: { x: 0, y: 0, radius: 10, color: '#00ff00' },
+            wall: { x: 0, y: canvas.height - 10, width: canvas.width, height: 10, color: '#0000ff' }
+        };
+
+        let score = 0;
+        let startTime;
+        let elapsedTime = 0;
+
+        // Event listeners
+        canvas.addEventListener('touchmove', movePaddle);
+        canvas.addEventListener('mousemove', movePaddle);
+
+        function movePaddle(e) {
+            const rect = canvas.getBoundingClientRect();
+            const root = document.documentElement;
+
+            let x;
+            if (e.type === 'touchmove') {
+                x = e.touches[0].clientX - rect.left - root.scrollLeft;
+            } else {
+                x = e.clientX - rect.left - root.scrollLeft;
+            }
+
+            paddle.x = x - paddle.width / 2;
+
+            // Keep paddle within canvas
+            if (paddle.x < 0) {
+                paddle.x = 0;
+            }
+            if (paddle.x + paddle.width > canvas.width) {
+                paddle.x = canvas.width - paddle.width;
+            }
+        }
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Add a shine effect
+            ctx.beginPath();
+            ctx.arc(ball.x - ball.radius / 3, ball.y - ball.radius / 3, ball.radius / 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddle.x, paddle.y, paddle.width, paddle.height);
+            ctx.fillStyle = paddle.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Add a grip pattern
+            for (let i = 1; i < 5; i++) {
+                ctx.beginPath();
+                ctx.rect(paddle.x + i * (paddle.width / 5), paddle.y, 2, paddle.height);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        function drawNet() {
+            ctx.beginPath();
+            ctx.rect(net.x, net.y, net.width, net.height);
+            ctx.fillStyle = net.color;
+            ctx.fill();
+            ctx.closePath();
+
+            // Add net pattern
+            for (let i = 0; i < canvas.width; i += 20) {
+                ctx.beginPath();
+                ctx.rect(i, net.y - 10, 2, 20);
+                ctx.fillStyle = net.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        function drawScore() {
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('Score: ' + score, 10, 25);
+        }
+
+        function drawTimer() {
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('Time: ' + formatTime(elapsedTime), canvas.width - 100, 25);
+        }
+
+        function drawLevel() {
+            ctx.font = 'bold 16px Arial';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText('Level: ' + (currentLevel + 1), canvas.width / 2 - 30, 25);
+        }
+
+        function drawPowerUp() {
+            if (powerUps.active === null) {
+                ctx.beginPath();
+                ctx.arc(powerUps.speed.x, powerUps.speed.y, powerUps.speed.radius, 0, Math.PI * 2);
+                ctx.fillStyle = powerUps.speed.color;
+                ctx.fill();
+                ctx.closePath();
+            } else if (powerUps.active === 'wall') {
+                ctx.beginPath();
+                ctx.rect(powerUps.wall.x, powerUps.wall.y, powerUps.wall.width, powerUps.wall.height);
+                ctx.fillStyle = powerUps.wall.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        function formatTime(milliseconds) {
+            const totalSeconds = Math.floor(milliseconds / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function collisionDetection() {
+            // Ball collision with walls
+            if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+                ball.dx = -ball.dx;
+            }
+            if (ball.y + ball.dy < ball.radius) {
+                ball.dy = -ball.dy;
+            }
+
+            // Ball collision with paddle or wall power-up
+            if (ball.y + ball.dy > paddle.y - ball.radius &&
+                ((ball.x > paddle.x && ball.x < paddle.x + paddle.width) ||
+                (powerUps.active === 'wall' && ball.y + ball.dy < canvas.height))) {
+                
+                // Calculate where the ball hit the paddle
+                let hitPos = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+                
+                // Change angle based on where the ball hit the paddle
+                let angle = hitPos * Math.PI / 3; // Max angle: 60 degrees
+                
+                ball.dx = ball.speed * Math.sin(angle);
+                ball.dy = -ball.speed * Math.cos(angle);
+                
+                score++;
+
+                // Check for level up
+                if (score % 10 === 0 && currentLevel < levels.length - 1) {
+                    currentLevel++;
+                    updateLevel();
+                }
+            } else if (ball.y + ball.dy > canvas.height - ball.radius && powerUps.active !== 'wall') {
+                // Game over if ball touches bottom and wall power-up is not active
+                alert('Game Over!\nYour score: ' + score + '\nTime played: ' + formatTime(elapsedTime) + '\nFinal level: ' + (currentLevel + 1));
+                document.location.reload();
+            }
+
+            // Power-up collision
+            if (powerUps.active === null &&
+                Math.sqrt(Math.pow(ball.x - powerUps.speed.x, 2) + Math.pow(ball.y - powerUps.speed.y, 2)) < ball.radius + powerUps.speed.radius) {
+                activatePowerUp(powerUps.types[Math.floor(Math.random() * powerUps.types.length)]);
+            }
+        }
+
+        function activatePowerUp(type) {
+            powerUps.active = type;
+            powerUps.startTime = Date.now();
+
+            if (type === 'speed') {
+                ball.speed *= 2;
+            }
+        }
+
+        function updatePowerUps() {
+            if (powerUps.active && Date.now() - powerUps.startTime > powerUps.duration) {
+                if (powerUps.active === 'speed') {
+                    ball.speed /= 2;
+                }
+                powerUps.active = null;
+                resetPowerUpPosition();
+            }
+        }
+
+        function resetPowerUpPosition() {
+            powerUps.speed.x = Math.random() * (canvas.width - 2 * powerUps.speed.radius) + powerUps.speed.radius;
+            powerUps.speed.y = Math.random() * (canvas.height / 2 - 2 * powerUps.speed.radius) + powerUps.speed.radius;
+        }
+
+        function updateLevel() {
+            ball.speed = levels[currentLevel].speed;
+            ball.radius = levels[currentLevel].ballRadius;
+            ball.color = levels[currentLevel].color;
+            paddle.width = levels[currentLevel].paddleWidth;
+            canvas.style.backgroundColor = levels[currentLevel].backgroundColor;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawNet();
+            drawBall();
+            drawPaddle();
+            drawScore();
+            drawTimer();
+            drawLevel();
+            drawPowerUp();
+            collisionDetection();
+            updatePowerUps();
+
+            ball.x += ball.dx * ball.speed;
+            ball.y += ball.dy * ball.speed;
+
+            if (startTime) {
+                elapsedTime = Date.now() - startTime;
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        function startGame() {
+            startTime = Date.now();
+            updateLevel();
+            resetPowerUpPosition();
+            draw();
+        }
+
+        startGame();
+    </script>
+</body>
+</html>
